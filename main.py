@@ -1,3 +1,4 @@
+import time
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
 from config import settings
@@ -18,11 +19,26 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 
+RATE_LIMIT = 5
+WINDOW_SECONDS = 60
+
+clients: dict[str, dict] = {}
+
 @app.api_route(
     "/{path:path}",
     methods={"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"}
 )
 async def proxy(request: Request, path: str):
+    client_ip = request.client.host
+    
+    print("client_ip is " + str(client_ip))
+    
+    if not is_allowed(client_ip_addr=client_ip):
+        return HTTPException(
+            status_code=429,
+            detail="Too many requests"
+        )
+    
     target_url = f"{settings.backend_url.rstrip('/')}/{path.lstrip('/')}"
 
     if request.url.query:
@@ -59,3 +75,30 @@ async def proxy(request: Request, path: str):
         status_code=backend_response.status_code,
         headers=response_headers,
     )
+
+
+def is_allowed(client_ip_addr: str) -> bool:
+    now = time.time()
+    
+    client_data = clients.get(client_ip_addr)
+    
+    if client_data is None:
+        clients[client_ip_addr] = {
+            "count": 1,
+            "window_start": now
+        }
+        
+        return True
+    
+    if now - client_data["window_start"] >= WINDOW_SECONDS:
+        client_data["count"] = 1
+        client_data["window_start"] = now
+        
+        return True
+    
+    if client_data["count"] >= RATE_LIMIT:
+        return False
+        
+    client_data["count"] += 1
+    
+    return True
