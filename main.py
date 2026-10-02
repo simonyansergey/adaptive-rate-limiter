@@ -34,7 +34,7 @@ async def proxy(request: Request, path: str):
     print("client_ip is " + str(client_ip))
     
     if not is_allowed(client_ip_addr=client_ip):
-        return HTTPException(
+        raise HTTPException(
             status_code=429,
             detail="Too many requests"
         )
