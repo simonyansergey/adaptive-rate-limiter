@@ -1,7 +1,7 @@
-import time
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
 from config import settings
+from limiter import FixedWindowMemoryLimiter, RateLimiter
 
 app = FastAPI()
 
@@ -19,10 +19,7 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 
-RATE_LIMIT = 5
-WINDOW_SECONDS = 60
-
-clients: dict[str, dict] = {}
+limiter: RateLimiter = FixedWindowMemoryLimiter(limit=5, window_seconds=60)
 
 @app.api_route(
     "/{path:path}",
@@ -33,10 +30,13 @@ async def proxy(request: Request, path: str):
     
     print("client_ip is " + str(client_ip))
     
-    if not is_allowed(client_ip_addr=client_ip):
+    decision = await limiter.check(client_ip)
+
+    if not decision.allowed:
         raise HTTPException(
             status_code=429,
-            detail="Too many requests"
+            detail="Too many requests",
+            headers={"Retry-After": str(decision.retry_after)},
         )
     
     target_url = f"{settings.backend_url.rstrip('/')}/{path.lstrip('/')}"
@@ -75,30 +75,3 @@ async def proxy(request: Request, path: str):
         status_code=backend_response.status_code,
         headers=response_headers,
     )
-
-
-def is_allowed(client_ip_addr: str) -> bool:
-    now = time.time()
-    
-    client_data = clients.get(client_ip_addr)
-    
-    if client_data is None:
-        clients[client_ip_addr] = {
-            "count": 1,
-            "window_start": now
-        }
-        
-        return True
-    
-    if now - client_data["window_start"] >= WINDOW_SECONDS:
-        client_data["count"] = 1
-        client_data["window_start"] = now
-        
-        return True
-    
-    if client_data["count"] >= RATE_LIMIT:
-        return False
-        
-    client_data["count"] += 1
-    
-    return True

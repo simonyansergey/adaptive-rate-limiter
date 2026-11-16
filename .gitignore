@@ -9,3 +9,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Basic flow visualizations
+flow.png
+basic-flow.txt
