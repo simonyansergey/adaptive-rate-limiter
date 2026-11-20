@@ -1,0 +1,7 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      # host_ip:host_port:container_port
+      # Bound to 127.0.0.1 so Redis (no password by default) is reachable only from this machine.
+      - "127.0.0.1:6379:6379"
